@@ -1,5 +1,4 @@
 #include <Arduino.h>
-
 #if defined(PLATFORM_ESP8266)
   #include <espnow.h>
   #include <ESP8266WiFi.h>
@@ -8,7 +7,6 @@
   #include <esp_wifi.h>
   #include <WiFi.h>
 #endif
-
 #include "msp.h"
 #include "msptypes.h"
 #include "logging.h"
@@ -16,22 +14,23 @@
 #include "common.h"
 #include "options.h"
 #include "helpers.h"
-
 #include "device.h"
 #include "devWIFI.h"
 #include "devButton.h"
 #include "devLED.h"
+#if defined(CRSF_WIFI_CONTROL_ENABLED)
+#include "CrsfWifi.h"
+static CrsfWifi crsfWifi;
+static bool wifiTrainerEnabled = false;
+#endif
 
 #if defined(MAVLINK_ENABLED)
 #include <MAVLink.h>
 #endif
-
 /////////// GLOBALS ///////////
 
 uint8_t bindingAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
 const uint8_t version[] = {LATEST_VERSION};
-
 connectionState_e connectionState = starting;
 // Assume we are in wifi update mode until we know otherwise
 wifi_service_t wifiService = WIFI_SERVICE_UPDATE;
@@ -39,7 +38,6 @@ unsigned long rebootTime = 0;
 
 bool cacheFull = false;
 bool sendCached = false;
-
 device_t *ui_devices[] = {
 #ifdef PIN_LED
   &LED_device,
@@ -218,6 +216,10 @@ void ProcessMSPPacketFromTX(mspPacket_t *packet)
 
   case MSP_ELRS_BACKPACK_SET_HEAD_TRACKING:
     DBGLN("Processing MSP_ELRS_BACKPACK_SET_HEAD_TRACKING...");
+#if defined(CRSF_WIFI_CONTROL_ENABLED)
+    if (wifiTrainerEnabled != (packet->payloadSize == 1 && packet->payload[0] != 0)) crsfWifi.disable();
+    wifiTrainerEnabled = packet->payloadSize == 1 && packet->payload[0] != 0;
+#endif
     cachedHTPacket = *packet;
     cacheFull = true;
     sendMSPViaEspnow(packet);
@@ -225,6 +227,9 @@ void ProcessMSPPacketFromTX(mspPacket_t *packet)
 
   case MSP_ELRS_BACKPACK_CRSF_TLM:
     DBGLN("Processing MSP_ELRS_BACKPACK_CRSF_TLM...");
+#if defined(CRSF_WIFI_CONTROL_ENABLED)
+    crsfWifi.telemetry(packet->payload, packet->payloadSize, millis());
+#endif
     if (config.GetTelemMode() == BACKPACK_TELEM_MODE_WIFI)
     {
       sendMSPViaWiFiUDP(packet);
@@ -457,6 +462,9 @@ void loop()
   uint32_t now = millis();
 
   devicesUpdate(now);
+#if defined(CRSF_WIFI_CONTROL_ENABLED)
+  crsfWifi.poll(now, wifiTrainerEnabled && wifiService == WIFI_SERVICE_MAVLINK_TX, msp);
+#endif
 
   #if defined(PLATFORM_ESP8266) || defined(PLATFORM_ESP32)
     // If the reboot time is set and the current time is past the reboot time then reboot.
