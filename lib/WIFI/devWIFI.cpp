@@ -648,6 +648,7 @@ static void startWiFi(unsigned long now)
   #if defined(PLATFORM_ESP8266)
     WiFi.setOutputPower(20.5);
     WiFi.setPhyMode(WIFI_PHY_MODE_11N);
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
   #elif defined(PLATFORM_ESP32)
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
   #endif
@@ -831,6 +832,7 @@ static void HandleWebUpdate()
         wifiMode = WIFI_AP;
         #if defined(PLATFORM_ESP8266)
           WiFi.mode(WIFI_AP_STA);
+          WiFi.setSleepMode(WIFI_NONE_SLEEP);
         #else
           WiFi.mode(WIFI_AP);
         #endif
@@ -862,6 +864,9 @@ static void HandleWebUpdate()
         DBGLN("Connecting to home network '%s' '%s'", station_ssid, station_password);
         wifiMode = WIFI_STA;
         WiFi.mode(wifiMode);
+        #if defined(PLATFORM_ESP8266)
+          WiFi.setSleepMode(WIFI_NONE_SLEEP);
+        #endif
         WiFi.setHostname(myHostname); // hostname must be set after the mode is set to STA
         changeTime = now;
         WiFi.begin(station_ssid, station_password);
