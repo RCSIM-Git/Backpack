@@ -27,9 +27,11 @@ menu. Join its access point or the same LAN. The bridge uses UDP port `8888`,
 separate from MAVLink ports 14550/14555. There is no web configuration switch
 for this experimental service.
 
-The explicit ESP32-C3 build environment is
-`pio run -e ESP32C3_TX_Backpack_via_CRSF_WIFI`. The ordinary
-`ESP32C3_TX_Backpack` environment keeps this feature disabled.
+The explicit build environments with this feature enabled are:
+- ESP32-C3 (e.g. RadioMaster Nomad): `pio run -e ESP32C3_TX_Backpack_via_CRSF_WIFI`
+- ESP8285 (e.g. RadioMaster Pocket / MT12 / TX16S internal TX): `pio run -e ESP_TX_Backpack_via_CRSF_WIFI`
+
+Ordinary backpack environments keep this feature disabled.
 
 RCSIM's existing raw CRSF UDP transport is not directly compatible with the
 session envelope below. A client adapter or matching RCSIM change is required.

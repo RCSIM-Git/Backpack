@@ -80,6 +80,7 @@ jobs:
           platformio platform update
           pio run -e ESP32C3_TX_Backpack_via_CRSF_WIFI
           pio run -e ESP32C3_TX_Backpack_via_UART
+          pio run -e ESP_TX_Backpack_via_CRSF_WIFI
           pio run -e ESP_TX_Backpack_via_UART
 
       - name: Build Flasher Executable
@@ -143,6 +144,8 @@ jobs:
           # Copy standalone binaries for convenient Web UI OTA updates
           cp .pio/build/ESP32C3_TX_Backpack_via_CRSF_WIFI/firmware.bin release-assets/firmware-ESP32C3-CRSF-WiFi.bin
           cp .pio/build/ESP32C3_TX_Backpack_via_UART/firmware.bin release-assets/firmware-ESP32C3-Standard.bin
+          cp .pio/build/ESP_TX_Backpack_via_CRSF_WIFI/firmware.bin release-assets/firmware-ESP8285-CRSF-WiFi.bin
+          cp .pio/build/ESP_TX_Backpack_via_CRSF_WIFI/firmware.bin.gz release-assets/firmware-ESP8285-CRSF-WiFi.bin.gz
           cp .pio/build/ESP_TX_Backpack_via_UART/firmware.bin release-assets/firmware-ESP8285-Standard.bin
 
           # Copy client tool and flasher
@@ -162,7 +165,7 @@ jobs:
           - **Telemetry Return:** Real-time CRSF telemetry datagrams returned to the active client socket.
           - **Safe EdgeTX Integration:** Channels flow through the standard EdgeTX trainer pipeline (`Master/CRSF`). Radio local switch instantly takes over control.
           - **Session Ownership & Protection:** 300 ms renewable lease, sequence checks, duplicate rejection, and bounded retired-token history.
-          - **Hardware Validated:** Bench-tested on **RadioMaster Nomad TX Backpack (ESP32-C3)** with Pocket / MT12 transmitters and ER5C V2 receiver.
+          - **Hardware Validated:** Bench-tested on **RadioMaster Nomad TX Backpack (ESP32-C3)** and **RadioMaster Pocket Internal ELRS (ESP8285)** with ER5C V2 receiver.
 
           ---
 
@@ -171,6 +174,8 @@ jobs:
           |---|---|
           | `Nomad-ESP32C3-CRSF-WiFi-bundle.zip` | Complete bundle (`firmware.bin`, `bootloader.bin`, `partitions.bin`, `boot_app0.bin` + flash guide) |
           | `firmware-ESP32C3-CRSF-WiFi.bin` | Direct OTA update binary for Web UI (ESP32-C3 / RadioMaster Nomad) |
+          | `firmware-ESP8285-CRSF-WiFi.bin.gz` | Direct OTA update binary for Web UI (ESP8285 / Pocket, MT12, TX16S internal TX) |
+          | `firmware-ESP8285-CRSF-WiFi.bin` | Uncompressed binary for ESP8285 |
           | `firmware-ESP32C3-Standard.bin` | Baseline standard backpack firmware for ESP32-C3 |
           | `firmware-ESP8285-Standard.bin` | Baseline standard backpack firmware for ESP8285 |
           | `crsf_wifi_client.py` | Python reference client & test script |
