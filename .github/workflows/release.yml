@@ -1,0 +1,208 @@
+name: Release Firmware
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v0.1.0-crsf-wifi)'
+        required: true
+        default: 'v0.1.0-crsf-wifi'
+      release_name:
+        description: 'Release Title'
+        required: true
+        default: 'Release v0.1.0 - CRSF Wi-Fi Trainer Bridge'
+      prerelease:
+        description: 'Mark as Pre-release'
+        type: boolean
+        default: false
+      draft:
+        description: 'Create as Draft'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Validate targets.json
+        run: python3 .github/targets_validator.py
+
+      - name: Run CRWF offline protocol checks
+        run: python3 tools/crsf_wifi_client.py
+
+  build-and-release:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-release
+
+      - name: Install PlatformIO and packaging dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio wheel shiv pyserial
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-release
+
+      - name: Build Firmware Targets
+        run: |
+          platformio platform update
+          pio run -e ESP32C3_TX_Backpack_via_CRSF_WIFI
+          pio run -e ESP32C3_TX_Backpack_via_UART
+          pio run -e ESP_TX_Backpack_via_UART
+
+      - name: Build Flasher Executable
+        run: |
+          mkdir -p dist
+          cd python
+          shiv -c flash -o ../dist/flasher.pyz pyserial .
+          cd ..
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets/Nomad-ESP32C3-CRSF-WiFi-bundle
+
+          # Copy Nomad / ESP32-C3 CRSF Wi-Fi bundle
+          cp .pio/build/ESP32C3_TX_Backpack_via_CRSF_WIFI/firmware.bin release-assets/Nomad-ESP32C3-CRSF-WiFi-bundle/firmware.bin
+          cp .pio/build/ESP32C3_TX_Backpack_via_CRSF_WIFI/bootloader.bin release-assets/Nomad-ESP32C3-CRSF-WiFi-bundle/bootloader.bin
+          cp .pio/build/ESP32C3_TX_Backpack_via_CRSF_WIFI/partitions.bin release-assets/Nomad-ESP32C3-CRSF-WiFi-bundle/partitions.bin
+          cp .pio/build/ESP32C3_TX_Backpack_via_CRSF_WIFI/boot_app0.bin release-assets/Nomad-ESP32C3-CRSF-WiFi-bundle/boot_app0.bin
+
+          cat << 'EOF' > release-assets/Nomad-ESP32C3-CRSF-WiFi-bundle/README_FLASHING.md
+          # RadioMaster Nomad (ESP32-C3) CRSF Wi-Fi Trainer Firmware
+
+          ## 1. Web UI Update (OTA)
+          If your backpack is already running ExpressLRS backpack firmware:
+          1. Connect to the TX Backpack Wi-Fi hotspot (`ExpressLRS TX Backpack`, password: `expresslrs`).
+          2. Open http://192.168.4.1 in your browser.
+          3. Upload `firmware.bin` in the Firmware Update tab.
+          4. Wait for it to reboot.
+
+          ## 2. Flashing via USB / Passthrough (esptool)
+          To write fresh firmware directly to an ESP32-C3:
+          ```bash
+          python -m esptool --chip esp32c3 write_flash \
+            0x0000 bootloader.bin \
+            0x8000 partitions.bin \
+            0xe000 boot_app0.bin \
+            0x10000 firmware.bin
+          ```
+
+          ## 3. Radio & EdgeTX Setup
+          - Radio firmware: EdgeTX 2.11 or later
+          - Model Setup -> Trainer -> Mode: `Master/CRSF`
+          - ExpressLRS Lua options:
+            - `HT Start Channel`: `EdgeTX`
+            - `Telemetry`: `WiFi`
+          - Reboot your transmitter once after changing these settings.
+
+          ## 4. Testing & Sending Channels from PC
+          Use the included `crsf_wifi_client.py`:
+          ```bash
+          python crsf_wifi_client.py --help
+          ```
+          EOF
+
+          # Create zip bundle for Nomad ESP32-C3
+          cd release-assets
+          zip -r Nomad-ESP32C3-CRSF-WiFi-bundle.zip Nomad-ESP32C3-CRSF-WiFi-bundle
+          rm -rf Nomad-ESP32C3-CRSF-WiFi-bundle
+          cd ..
+
+          # Copy standalone binaries for convenient Web UI OTA updates
+          cp .pio/build/ESP32C3_TX_Backpack_via_CRSF_WIFI/firmware.bin release-assets/firmware-ESP32C3-CRSF-WiFi.bin
+          cp .pio/build/ESP32C3_TX_Backpack_via_UART/firmware.bin release-assets/firmware-ESP32C3-Standard.bin
+          cp .pio/build/ESP_TX_Backpack_via_UART/firmware.bin release-assets/firmware-ESP8285-Standard.bin
+
+          # Copy client tool and flasher
+          cp tools/crsf_wifi_client.py release-assets/crsf_wifi_client.py
+          cp dist/flasher.pyz release-assets/flasher.pyz
+
+      - name: Generate Release Body
+        id: release_body
+        run: |
+          cat << 'EOF' > release_notes.md
+          # ExpressLRS Backpack - CRSF Wi-Fi Trainer Bridge Release
+
+          This release adds opt-in **CRSF Wi-Fi Trainer Input and Telemetry** (`CRWF` v1 protocol) for ExpressLRS TX Backpacks.
+
+          ### Key Features
+          - **UDP Port 8888 Service:** Stream packed 16-channel CRSF RC input directly from a PC or simulator to the TX backpack over Wi-Fi.
+          - **Telemetry Return:** Real-time CRSF telemetry datagrams returned to the active client socket.
+          - **Safe EdgeTX Integration:** Channels flow through the standard EdgeTX trainer pipeline (`Master/CRSF`). Radio local switch instantly takes over control.
+          - **Session Ownership & Protection:** 300 ms renewable lease, sequence checks, duplicate rejection, and bounded retired-token history.
+          - **Hardware Validated:** Bench-tested on **RadioMaster Nomad TX Backpack (ESP32-C3)** with Pocket / MT12 transmitters and ER5C V2 receiver.
+
+          ---
+
+          ### Release Assets
+          | File | Description |
+          |---|---|
+          | `Nomad-ESP32C3-CRSF-WiFi-bundle.zip` | Complete bundle (`firmware.bin`, `bootloader.bin`, `partitions.bin`, `boot_app0.bin` + flash guide) |
+          | `firmware-ESP32C3-CRSF-WiFi.bin` | Direct OTA update binary for Web UI (ESP32-C3 / RadioMaster Nomad) |
+          | `firmware-ESP32C3-Standard.bin` | Baseline standard backpack firmware for ESP32-C3 |
+          | `firmware-ESP8285-Standard.bin` | Baseline standard backpack firmware for ESP8285 |
+          | `crsf_wifi_client.py` | Python reference client & test script |
+          | `flasher.pyz` | Standalone Python serial flasher |
+
+          ---
+
+          ### Quick Setup Guide
+          1. **Flash Firmware:**
+             - Connect to backpack Web UI (`192.168.4.1`) and upload `firmware-ESP32C3-CRSF-WiFi.bin`, or flash the full bundle via USB using `esptool`.
+          2. **Configure Radio (EdgeTX):**
+             - Set Trainer Mode: `Master/CRSF`.
+             - Assign your trainer channels in Model Setup / Special Functions.
+             - Configure a physical switch for trainer toggle (for instant takeover).
+          3. **Configure Backpack via ExpressLRS Lua:**
+             - `HT Start Channel`: `EdgeTX`
+             - `Telemetry`: `WiFi`
+             - *Reboot your radio once after applying these Lua settings.*
+          4. **Connect from PC:**
+             - Connect PC to backpack Wi-Fi network.
+             - Run `python crsf_wifi_client.py` to stream channels or test protocol connectivity.
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
+          name: ${{ inputs.release_name || (github.ref_type == 'tag' && github.ref_name) }}
+          body_path: release_notes.md
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.prerelease || false }}
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
